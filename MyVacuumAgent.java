@@ -67,6 +67,13 @@ class MyAgentState
 				break;
 			}
 	    }
+		else if (agent_last_action == ACTION_TURN_RIGHT) {
+			agent_direction = (agent_direction + 1) % 4;
+		}
+		else if (agent_last_action == ACTION_TURN_LEFT) {
+			agent_direction = (agent_direction - 1) % 4;
+			if (agent_direction < 0) agent_direction += 4;
+		}
 		
 	}
 	
@@ -114,16 +121,12 @@ class MyAgentProgram implements AgentProgram {
 		initnialRandomActions--;
 		state.updatePosition(percept);
 		if(action==0) {
-		    state.agent_direction = ((state.agent_direction-1) % 4);
-		    if (state.agent_direction<0) 
-		    	state.agent_direction +=4;
 		    state.agent_last_action = state.ACTION_TURN_LEFT;
 			return LIUVacuumEnvironment.ACTION_TURN_LEFT;
 		} else if (action==1) {
-			state.agent_direction = ((state.agent_direction+1) % 4);
-		    state.agent_last_action = state.ACTION_TURN_RIGHT;
+			state.agent_last_action = state.ACTION_TURN_RIGHT;
 		    return LIUVacuumEnvironment.ACTION_TURN_RIGHT;
-		} 
+		}
 		state.agent_last_action=state.ACTION_MOVE_FORWARD;
 		return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
 	}
@@ -234,13 +237,11 @@ class Children {
 
 public class MyVacuumAgent extends AbstractAgent {
 	
-	enum CELL_TYPE {
-		UNKNOWN, CLEAN, SOLID
-	};
-	
     public MyVacuumAgent() {
     	
     	super(new MyAgentProgram() {
+    		
+    		int target = 0; // What to look for right now. (UNKNOWN = 0).
     		
     		public Children getChildren(Node node) {
     			int x = node.x;
@@ -256,7 +257,7 @@ public class MyVacuumAgent extends AbstractAgent {
     			
     			int size = 15;
     			
-    			if (fx >= 1 && fx <= size-2 && fy >= 1 && fy <= size-2) {
+    			if (fx >= 1 && fx <= size && fy >= 1 && fy <= size) {
     				if (state.world[fx][fy] != 1) { // not WALL
     					children.forward = new Node(fx, fy, dir, node.action);
     				}
@@ -266,7 +267,9 @@ public class MyVacuumAgent extends AbstractAgent {
     			children.right = new Node(x, y, (dir+1)%4, node.action);
     			
     			// turn left
-    			children.left = new Node(x, y, (dir-1)%4, node.action);
+    			int ld = (dir-1)%4;
+    			if (ld < 0) ld += 4;
+    			children.left = new Node(x, y, ld, node.action);
     			
 				return children;
     		}
@@ -306,7 +309,7 @@ public class MyVacuumAgent extends AbstractAgent {
 				}
     		}
     		
-    		public Action bfs(int x, int y, int dir) {
+    		public Action bfs(int x, int y, int dir, int target) {
 
     			boolean[][][] closed = new boolean[30][30][4];
     			
@@ -331,7 +334,7 @@ public class MyVacuumAgent extends AbstractAgent {
     			while (!open.isEmpty()) {
     				Node subtreeRoot = getNextOpen(open, inOpen);
     				
-    				if (state.world[subtreeRoot.x][subtreeRoot.y] == 0) { // goal: UNKNOWN
+    				if (state.world[subtreeRoot.x][subtreeRoot.y] == target) {
     					return subtreeRoot.action;
     				}
     				
@@ -353,57 +356,85 @@ public class MyVacuumAgent extends AbstractAgent {
     				state.agent_last_action = state.ACTION_TURN_RIGHT;
     			} else if (action == LIUVacuumEnvironment.ACTION_TURN_LEFT) {
     				state.agent_last_action = state.ACTION_TURN_LEFT;
+    			} else if (action == LIUVacuumEnvironment.ACTION_SUCK) {
+    				state.agent_last_action = state.ACTION_SUCK;
     			}
     			return action;
     		}
     		
-    		public Action executeasd(Percept percept) {
+    		public void updateKnownState(DynamicPercept p) {
+
+    		    state.updatePosition(p);
+    		    
+    			Boolean bump = (Boolean)p.getAttribute("bump");
+    			Boolean home = (Boolean)p.getAttribute("home");
+    		    
+    		    if (bump) {
+    				switch (state.agent_direction) {
+    				case MyAgentState.NORTH:
+    					state.updateWorld(state.agent_x_position, state.agent_y_position-1, state.WALL);
+    					break;
+    				case MyAgentState.EAST:
+    					state.updateWorld(state.agent_x_position + 1, state.agent_y_position, state.WALL);
+    					break;
+    				case MyAgentState.SOUTH:
+    					state.updateWorld(state.agent_x_position, state.agent_y_position+1, state.WALL);
+    					break;
+    				case MyAgentState.WEST:
+    					state.updateWorld(state.agent_x_position - 1, state.agent_y_position, state.WALL);
+    					break;
+    				}
+    		    }
+    		    
+    		    if (!home) {
+    		    	state.updateWorld(state.agent_x_position, state.agent_y_position, state.CLEAR);
+    		    }
+    		}
+    		
+    		public Action execute(Percept percept) {
+    			
+    			DynamicPercept p = (DynamicPercept) percept;
     			
     			// DO NOT REMOVE this if condition!!!
-    	    	/*if (initnialRandomActions > 0) {
-    	    		return moveToRandomStartPosition((DynamicPercept) percept);
-    	    	}*/
-    	    	
-    			DynamicPercept p = (DynamicPercept) percept;
-    		    Boolean bump = (Boolean)p.getAttribute("bump");
+    	    	if (initnialRandomActions > 0) {
+    	    		return moveToRandomStartPosition(p);
+	    		} else if (initnialRandomActions==0) {
+	        		// process percept for the last step of the initial random actions
+	        		initnialRandomActions--;
+	        		state.updatePosition((DynamicPercept) percept);
+	    			System.out.println("Processing percepts after the last execution of moveToRandomStartPosition()");
+	    			state.agent_last_action=state.ACTION_SUCK;
+	    	    	return LIUVacuumEnvironment.ACTION_SUCK;
+	        	}
+
+    			updateKnownState(p);
+    			
     		    Boolean dirt = (Boolean)p.getAttribute("dirt");
     		    Boolean home = (Boolean)p.getAttribute("home");
 
     		    System.out.println("----");
     		    System.out.println("percept: " + p);
     		    System.out.format("x: %d, y: %d, dir: %d\n", state.agent_x_position, state.agent_y_position, state.agent_direction);
-    			
-    		    // State update based on the percept value and the last action
-    		    state.updatePosition((DynamicPercept)percept);
-    		    if (bump) {
-    				switch (state.agent_direction) {
-    				case MyAgentState.NORTH:
-    					state.updateWorld(state.agent_x_position,state.agent_y_position-1,state.WALL);
-    					break;
-    				case MyAgentState.EAST:
-    					state.updateWorld(state.agent_x_position+1,state.agent_y_position,state.WALL);
-    					break;
-    				case MyAgentState.SOUTH:
-    					state.updateWorld(state.agent_x_position,state.agent_y_position+1,state.WALL);
-    					break;
-    				case MyAgentState.WEST:
-    					state.updateWorld(state.agent_x_position-1,state.agent_y_position,state.WALL);
-    					break;
-    				}
-    		    }
-    		    if (dirt)
-    		    	state.updateWorld(state.agent_x_position,state.agent_y_position,state.DIRT);
-    		    else
-    		    	state.updateWorld(state.agent_x_position,state.agent_y_position,state.CLEAR);
-    		    
+    	    	
     		    state.printWorldDebug();
-    		    
+    	    	
     		    // OUR AGENT AI BELLOW
     		    
     			if (dirt) {
-    				return LIUVacuumEnvironment.ACTION_SUCK; 
+    				return doAction(LIUVacuumEnvironment.ACTION_SUCK);
     			} else {
-    				return bfs(state.agent_x_position, state.agent_y_position, state.agent_direction);
+    				Action action = bfs(state.agent_x_position, state.agent_y_position, state.agent_direction, target);
+    				
+    				if (target != 4 && action == NoOpAction.NO_OP) {
+    					target = 4; // HOME
+    					action = LIUVacuumEnvironment.ACTION_MOVE_FORWARD; // why not?
+    				}
+    				
+    				if (target == 4 && home) {
+    					action = NoOpAction.NO_OP;
+    				}
+    				
+    				return doAction(action);
     			}
     		}
     		
