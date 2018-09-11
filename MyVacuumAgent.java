@@ -215,6 +215,23 @@ class MyAgentProgram implements AgentProgram {
 	}
 }
 
+
+
+/* # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+ * 
+ * 
+ * 
+ *                                                  LAB 1 CODE BELLOW
+ * 
+ * 
+ * 
+ *  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+ */
+
+
+/*
+ * Node class used for Breadth First Search.
+ */
 class Node {
 	int x;
 	int y;
@@ -229,20 +246,36 @@ class Node {
 	}
 }
 
+/*
+ * Reachable child notes of a node.
+ */
 class Children {
 	public Node forward;
 	public Node left;
 	public Node right;
 }
 
+/*
+ * Our lab 1 agent.
+ */
 public class MyVacuumAgent extends AbstractAgent {
 	
     public MyVacuumAgent() {
     	
     	super(new MyAgentProgram() {
     		
-    		int target = 0; // What to look for right now. (UNKNOWN = 0).
+    		/*
+    		 * What to look for right now in the Breadth First Search.
+    		 * This will start out as 0 (UNKNOWN) and switch to 4 (HOME)
+    		 * when all reachable UNKNOWN cells have been explored.
+    		 */
+    		int target = 0;
     		
+    		/*
+    		 * Returns all reachable nodes one Action away from given node.
+    		 * Nodes at the edge of the world and WALL nodes are not reachable,
+    		 * this is indicated with null.
+    		 */
     		public Children getChildren(Node node) {
     			int x = node.x;
     			int y = node.y;
@@ -274,23 +307,38 @@ public class MyVacuumAgent extends AbstractAgent {
 				return children;
     		}
     		
+    		/*
+    		 * Is this node already visited?
+    		 */
     		public boolean alreadyClosed(boolean[][][] closed, Node node) {
     			return closed[node.x][node.y][node.dir];
     		}
     		
+    		/*
+    		 * Add to nodes that have already been visited.
+    		 */
     		public void addToClosed(boolean[][][] closed, Node node) {
     			closed[node.x][node.y][node.dir] = true;
     		}
     		
+    		/*
+    		 * Is the node already in the list of nodes to explore?
+    		 */
     		public boolean alreadyOpen(boolean[][][] inOpen, Node node) {
     			return inOpen[node.x][node.y][node.dir];
     		}
     		
+    		/*
+    		 * Add node to list of nodes to explore.
+    		 */
     		public void addToOpen(LinkedList<Node> open, boolean[][][] inOpen, Node node) {
     			open.addLast(node);
     			inOpen[node.x][node.y][node.dir] = true;
     		}
     		
+    		/*
+    		 * Get next node to explore if available, else null.
+    		 */
     		public Node getNextOpen(LinkedList<Node> open, boolean[][][] inOpen) {
     			Node node = open.pollFirst();
     			if (node != null) {
@@ -299,6 +347,10 @@ public class MyVacuumAgent extends AbstractAgent {
     			return node;
     		}
     		
+    		/*
+    		 * Add to list of nodes to explore if it exists, has not already been visited, 
+    		 * and is not already in the list to explore.
+    		 */
     		public void exploreChild(boolean[][][] closed, LinkedList<Node> open, boolean[][][] inOpen, Node node) {
     			if (node != null) {
 					if (!alreadyClosed(closed, node)) {
@@ -309,13 +361,20 @@ public class MyVacuumAgent extends AbstractAgent {
 				}
     		}
     		
+    		/*
+    		 * Breadth First Search to find the Action that leads us towards the 
+    		 * cell of type [target] which is the fewest actions away from us.
+    		 */
     		public Action bfs(int x, int y, int dir, int target) {
 
+    			// Nodes that have been visited (  x   y  dir).
     			boolean[][][] closed = new boolean[30][30][4];
     			
+    			// Nodes that we want to explore next (queue).
     			LinkedList<Node> open = new LinkedList<Node>();
     			boolean[][][] inOpen = new boolean[30][30][4];
     			
+    			// Find closest children and set what action is needed to get to them.
     			Children firstChildren = getChildren(new Node(x, y, dir, NoOpAction.NO_OP));
     			if (firstChildren.forward != null) {
     				firstChildren.forward.action = LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
@@ -330,25 +389,34 @@ public class MyVacuumAgent extends AbstractAgent {
     				addToOpen(open, inOpen, firstChildren.left);
         		}
     			
-    			
+    			// While there is still nodes to explore.
     			while (!open.isEmpty()) {
+    				
+    				// Get the next node in the front of the queue.
     				Node subtreeRoot = getNextOpen(open, inOpen);
     				
+    				// If it is the [target] we are looking for...
     				if (state.world[subtreeRoot.x][subtreeRoot.y] == target) {
+    					// ... then return the action required to take us one step towards it.
     					return subtreeRoot.action;
     				}
     				
+    				// Add the children of [subtreeRoot] to the queue to explore. 
     				Children children = getChildren(subtreeRoot);
     				exploreChild(closed, open, inOpen, children.forward);
     				exploreChild(closed, open, inOpen, children.right);
     				exploreChild(closed, open, inOpen, children.left);
     				
+    				// The [subtreeRoot] has now been visited.
     				addToClosed(closed, subtreeRoot);
     			}
     			
     			return NoOpAction.NO_OP;
     		}
     		
+    		/*
+    		 * Used to keep track of the last action performed.
+    		 */
     		public Action doAction(Action action) {
     			if (action == LIUVacuumEnvironment.ACTION_MOVE_FORWARD) {
     				state.agent_last_action = state.ACTION_MOVE_FORWARD;
@@ -362,6 +430,10 @@ public class MyVacuumAgent extends AbstractAgent {
     			return action;
     		}
     		
+    		/*
+    		 * Used to update world state known to the robot based on perception and
+    		 * previous robot actions.
+    		 */
     		public void updateKnownState(DynamicPercept p) {
 
     		    state.updatePosition(p);
@@ -391,14 +463,18 @@ public class MyVacuumAgent extends AbstractAgent {
     		    }
     		}
     		
+    		/*
+    		 * Perform one step of AI goodness.
+    		 */
     		public Action execute(Percept percept) {
     			
     			DynamicPercept p = (DynamicPercept) percept;
     			
-    			// DO NOT REMOVE this if condition!!!
+    			// Move to random position initially.
     	    	if (initnialRandomActions > 0) {
     	    		return moveToRandomStartPosition(p);
-	    		} else if (initnialRandomActions==0) {
+    	    		
+	    		} else if (initnialRandomActions == 0) {
 	        		// process percept for the last step of the initial random actions
 	        		initnialRandomActions--;
 	        		state.updatePosition((DynamicPercept) percept);
@@ -423,13 +499,17 @@ public class MyVacuumAgent extends AbstractAgent {
     			if (dirt) {
     				return doAction(LIUVacuumEnvironment.ACTION_SUCK);
     			} else {
+    				// Breadth First Search to find next action that will lead us towards the [target].
     				Action action = bfs(state.agent_x_position, state.agent_y_position, state.agent_direction, target);
     				
+    				// When all reachable UNKNOWN cells have been found bfs() will return NO_OP and
+    				// we change our target to HOME (4).
     				if (target != 4 && action == NoOpAction.NO_OP) {
     					target = 4; // HOME
     					action = LIUVacuumEnvironment.ACTION_MOVE_FORWARD; // why not?
     				}
     				
+    				// When HOME has been reached we want to stop.
     				if (target == 4 && home) {
     					action = NoOpAction.NO_OP;
     				}
@@ -440,6 +520,10 @@ public class MyVacuumAgent extends AbstractAgent {
     		
     	});
     	
+    	
+    	/*
+    	 * Simple state machine for task 1, with no obstacles.
+    	 */
     	
     	/*super(new MyAgentProgram() {
     		
